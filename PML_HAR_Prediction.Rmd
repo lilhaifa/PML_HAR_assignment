@@ -1,0 +1,129 @@
+---
+title: "PML HAR Weight Lifting Prediction"
+author: "Vivek Gera"
+date: "06/11/2020"
+output: html_document
+---
+
+```{r setup, include=FALSE}
+knitr::opts_chunk$set(echo = TRUE)
+```
+```{r echo=FALSE,message=FALSE}
+   library(ggplot2)
+   library(caret)
+   library(e1071)
+   library(randomForest)
+```
+
+## Synopsis ##
+The goal of the assignment is stated as :  
+  
+In this project, your goal will be to use data from accelerometers on the belt, forearm, arm, and dumbell of 6 participants. They were asked to perform barbell lifts correctly and incorrectly in 5 different ways.  
+
+This is translated into ML problem as under:
+
+To correctly classify the quality category (A,B,C,D,E) based on the data gathered from accelerometers on belt, forearm, arm and dumbbell.
+
+This is a multi-class classification problem. 
+
+The main steps are :  
+  1. Load the training and test data from the downloaded CSV files.  
+  2. Select the predictors and the outcome from the training data.  
+  3. **Cross Validation** - Partition the training data into training and validation partitions. Random sub-sampling is proposed to be used for partitioning the data into 60:40 ratio.  
+  4. Explore the training data for any discernable patterns, finalize the predictor selection.  
+  5. Select a set of candidate algorithms, train the models based on these candidate algorithms using training data.  
+  6. Predict the outcome using validation partition from 3 above, check the accuracy. The target is 80% or higher (as the passing marks required is 80% ).   
+  7. Ensure that the set of predictors selected for the test data is same as that for training and validation data sets.  
+  8. Finalize the model that scores highest on accuracy, use it to predict the test data outcomes.    
+  9. Candidate models : CART, SVM, Random-Forest, Naive Bayes.  
+  
+### load the training and test data from files ###  
+
+```{r echo=TRUE}
+pmltrg_raw <- read.csv("PrML_wk4_proj_pml-training.csv")
+pmltest_raw <- read.csv("pml-testing.csv")
+```
+
+### select the required predictors - the accelerometer readings ###  
+ 1. remove the predictors that are NA, ensure no missing data  
+ 2. set the outcome classes as factors
+```{r echo = TRUE}
+pmltrg_accel <- subset(pmltrg_raw,select = grep("accel",names(pmltrg_raw)))
+pmltrg_accel$classe <- pmltrg_raw$classe
+pmltrg_accel <- pmltrg_accel[,-c(2,7,12,17)]
+mean(is.na(pmltrg_accel))
+pmltrg_accel$classe <- as.factor(pmltrg_accel$classe)
+```
+
+### Partition the training data into training and validation partitions ###  
+```{r echo=TRUE}
+set.seed(4110)
+inTrain <- createDataPartition(pmltrg_accel$classe,p=0.6,list=FALSE)
+pml_trainset <- pmltrg_accel[inTrain,]
+pml_validset <- pmltrg_accel[-inTrain,]
+dim(pml_trainset)
+dim(pml_validset)
+```
+
+### draw exploratory plots of the outcomes Vs the accelerometer measurments along each axis ###  
+```{r echo=TRUE}
+featurePlot(x=pml_trainset[,c("accel_dumbbell_x","accel_arm_x","accel_forearm_x","accel_belt_x")],y=pml_trainset$classe,plot="strip")
+featurePlot(x=pml_trainset[,c("accel_dumbbell_y","accel_arm_y","accel_forearm_y","accel_belt_y")],y=pml_trainset$classe,plot="strip")
+featurePlot(x=pml_trainset[,c("accel_dumbbell_z","accel_arm_z","accel_forearm_z","accel_belt_z")],y=pml_trainset$classe,plot="strip")
+featurePlot(x=pml_trainset[,c("total_accel_dumbbell","total_accel_arm","total_accel_forearm","total_accel_belt")],y=pml_trainset$classe,plot="strip")
+```
+
+### Observations ###  
+1. There is no readily visible combination of predictors spread patterns that highlights any specific class outcome.  
+2. However, it is also clear that there are certain distinct patterns of predictor spreads for certain specific outcome classes.  
+3. The overall impression is that a complex combination of predictor values should be possible that may be sufficiently high in prediction accuracy.  
+
+### Try the candidate Models ###  
+
+__First, SVM Model__
+
+```{r echo=TRUE}
+mdlfit_svm <- svm(classe ~ ., data=pml_trainset)
+predict_svm <- predict(mdlfit_svm,newdata=pml_validset)
+confusionMatrix(predict_svm,pml_validset$classe)
+```
+  
+__CART MODEL__
+
+```{r echo=TRUE}
+mdlfit_cart <- train(classe ~., method="rpart",data=pml_trainset)
+predict_cart <- predict(mdlfit_cart,newdata=pml_validset)
+confusionMatrix(predict_cart,pml_validset$classe)
+```
+  
+__Naive Bayes__  
+
+```{r echo=TRUE}
+mdlfit_nbayes <- naiveBayes(classe ~.,data=pml_trainset)
+predict_nbayes <- predict(mdlfit_nbayes,newdata=pml_validset)
+confusionMatrix(predict_nbayes,pml_validset$classe)
+```
+  
+__Random Forest__  
+
+```{r echo=TRUE}
+mdlfit_rf <- randomForest(classe ~., data=pml_trainset)
+predict_rf <- predict(mdlfit_rf,newdata=pml_validset)
+confusionMatrix(predict_rf,pml_validset$classe)
+```
+  
+## Conclusion ##  
+
+1. Random Forest based model yields the higest accuracy of ~ 94%  
+2. SVM based model yields ~ 80% accuracy  
+3. Allowing for overfitting, we select Random Forest based model to apply on the test data  
+4. **Expected Out of Sample Error : This is expected to be ~ 6% or higher allowing for overfitting**
+
+## preparation of test data and predict using RF Model##  
+
+```{r echo=TRUE}
+pmltest_accel <- subset(pmltest_raw,select = grep("accel",names(pmltest_raw)))
+pmltest_accel <- pmltest_accel[,-c(2,7,12,17)]
+mean(is.na(pmltest_accel))
+predict_test <- predict(mdlfit_rf,newdata=pmltest_accel)
+```
